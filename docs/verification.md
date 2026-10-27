@@ -1,5 +1,16 @@
 # Local verification — 2026-10-27
 
+## Timeout review fix (iteration 5)
+
+- Reproduced REVIEW.md with the actual analyzer, estimator and generated Lua: a 10m stroke at 0.01m/s was accepted as safe with 1000s drawing time but aborted under the old fixed timeout. An accepted 180s wait also failed. Before the controller change, both new executed regressions failed; 11 existing regression cases passed.
+- Each target now fixes its deadline once using initial actual 3D distance, incoming draw/move speed, twice nominal travel time, 120s tracking margin, and the full configured wait. It resets on advancing, never on repeated updates.
+- `npm run test:run`: **42/42 passed** across four files, using Node 25.5.0. Four new executed Lua cases cover slow drawing with integrated commanded velocities, a slow initial vertical approach and inter-stroke transit, 180s waits at all points, and a stalled slow drawing target. The existing unreachable-target case now checks the exact fixed deadline, relay off, zero velocity and terminal abort.
+- `npm run test:desktop`: **passed**, including renderer TypeScript/Vite build, Electron main/preload build and all seven desktop interaction checks. Its actual `editor.png` capture was visually inspected. The first sandbox test attempt failed during esbuild configuration resolution with access denied; approved local execution passed. The initial 3D regression needed a longer simulation horizon to include the slow inter-stroke transit; the final suite passes.
+- Logs remain local in the portfolio workspace under `work/audit/drone-run5-*`. This is working-tree verification; no new clean-install/packaged-launch/remote-CI claim follows from these checks. Lua tests use mocked APIs, without SITL or aircraft validation.
+- Pre-publication scan covered 19,690 files (about 1.17GB), including ignored/untracked dependencies and binaries, all 37 reachable blobs, and author/committer plus configured commit email metadata. Nineteen pattern hits were reviewed as upstream examples, dependency description contact, PEM serializer delimiters, property names, or binary/CSS/base64/translation substrings. No project credentials, user personal data or sensitive configuration filenames were found; metadata uses GitHub noreply identities. Fresh screenshot inspected for personal data. This dated scan is not a general security guarantee.
+
+## Original iteration 2 evidence
+
 Verified on Windows x64 with Node 25.5.0, npm 11.17.0 and Electron 45.0.0:
 
 - `npm run build`: TypeScript and Vite production renderer succeeded.

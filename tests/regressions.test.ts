@@ -42,9 +42,9 @@ vehicle = {
 relay = {on = function() table.insert(lights, true) end, off = function() table.insert(lights, false) end}
 gcs = {send_text = function(self, severity, message) table.insert(messages, message) end}
 `;
-function simulation(dryRun: boolean, assertions: string) {
+function simulation(dryRun: boolean, assertions: string, overrides: Partial<ExportConfig> = {}) {
   const second = { ...line, id: 'second', start: {x: 20, y: 0}, end: {x: 30, y: 0} };
-  const script = exportToLua([line, second], { ...config, dryRun }).script;
+  const script = exportToLua([line, second], { ...config, ...overrides, dryRun }).script;
   execute(`${mocks}\nlocal update = (function()\n${script}\nend)()\n${assertions}`);
 }
 
@@ -94,6 +94,58 @@ describe('export validation regressions', () => {
 });
 
 describe('executed Lua controller', () => {
+  it('allows a slow initial vertical approach using move speed and actual 3D distance', () => simulation(false, `
+    position = {0, 0, 0}
+    for i = 1, 42000 do
+      if not update() then break end
+      local velocity = commands[#commands]
+      for axis = 1, 3 do position[axis] = position[axis] + velocity[axis] * 0.1 end
+      now = now + 100
+    end
+    assert(now > 2900000)
+    assert(messages[#messages] == 'Light painting complete', messages[#messages])
+  `, { moveSpeed: 0.01 }));
+  it('keeps a fixed finite deadline even for a stalled slow drawing target', () => simulation(false, `
+    update(); now = 500; update() -- finish first point wait
+    update() -- activates 10m draw at 0.01m/s, deadline 2121000ms
+    now = 2000000; assert(update() ~= nil and #messages == 0)
+    now = 2121000; assert(update() ~= nil and #messages == 0)
+    now = 2121001; update()
+    assert(messages[#messages] == 'Aborted: target timeout')
+    assert(lights[#lights] == false and commands[#commands][1] == 0)
+  `, { drawSpeed: 0.01 }));
+  it('completes an accepted slow stroke using commanded velocities beyond 120 seconds', () => {
+    const slow = { ...config, drawSpeed: 0.01 };
+    expect(analyzeSafety([line], slow)).toEqual({status: 'safe', issues: [], canExport: true});
+    expect(estimateMissionTime([line], slow).drawingTime).toBe(1000);
+    simulation(false, `
+      for i = 1, 21000 do
+        local next_update = update()
+        if not next_update then break end
+        local velocity = commands[#commands]
+        for axis = 1, 3 do position[axis] = position[axis] + velocity[axis] * 0.1 end
+        now = now + 100
+      end
+      assert(now > 1900000, 'slow strokes must actually take more than 120 seconds')
+      assert(messages[#messages] == 'Light painting complete', messages[#messages])
+      assert(lights[#lights] == false and commands[#commands][1] == 0)
+    `, { drawSpeed: 0.01 });
+  });
+  it('completes accepted waits longer than 120 seconds at every point', () => {
+    expect(analyzeSafety([line], {...config, waitTime: 180}).canExport).toBe(true);
+    simulation(false, `
+      for _, x in ipairs({0, 10, 20, 30}) do
+        position = {x, 0, -30}
+        update()
+        now = now + 179900
+        assert(update() ~= nil and #messages == 0, 'must still be waiting')
+        now = now + 100
+        update()
+      end
+      assert(now == 720000)
+      assert(messages[#messages] == 'Light painting complete')
+    `, { waitTime: 180 });
+  });
   it('dry run terminates without any vehicle or relay commands', () => simulation(true, `
     for i = 1, 6 do update() end
     assert(#commands == 0 and #lights == 0)
@@ -115,9 +167,15 @@ describe('executed Lua controller', () => {
     assert(#commands == 0 and #messages == 1 and lights[#lights] == false)
   `));
   it('times out unreachable targets and sends a zero velocity', () => simulation(false, `
-    position = {-10,0,-30}; update(); now = 120001; update()
+    position = {-10,0,-30}; update()
+    -- 2 * (10m / 5m/s) + 120s margin + 0.5s wait = 124.5s.
+    now = 124500; assert(update() ~= nil and #messages == 0)
+    now = 124501; update()
     assert(messages[#messages] == 'Aborted: target timeout')
     assert(commands[#commands][1] == 0 and lights[#lights] == false)
+    local count = #commands
+    position = {0,0,-30}; update()
+    assert(#commands == count and #messages == 1, 'timeout must stay terminal')
   `));
   it('aborts when position is missing or a command is rejected', () => {
     simulation(false, `ahrs.get_relative_position_NED_origin = function() return nil end; update(); assert(#commands == 1 and lights[#lights] == false)`);

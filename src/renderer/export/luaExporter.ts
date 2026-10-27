@@ -113,7 +113,7 @@ function generateLuaScript(
 -- x = North, y = East relative to EKF origin; altitude = -Down.
 -- Dry run only logs; it never commands motion or touches relays.
 local current_point = 1
-local started = nil
+local target_deadline = nil
 local waiting_until = nil
 local finished = false
 local function vector(x, y, z)
@@ -148,11 +148,16 @@ function update()
   local pos = ahrs:get_relative_position_NED_origin()
   if not pos then stop("Aborted: no EKF position"); return end
   local now = millis():tofloat()
-  if not started then started = now end
-  if now - started > 120000 then stop("Aborted: target timeout"); return end
   local target = points[current_point]
   local dx, dy, dz = target[1] - pos:x(), target[2] - pos:y(), -ALTITUDE - pos:z()
   local dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+  local speed = target[3] and DRAW_SPEED or MOVE_SPEED
+  if not target_deadline then
+    -- Set once per target, including the initial 3D approach. Allow twice
+    -- nominal travel time, 120s for slowdown/tracking, and the full wait.
+    target_deadline = now + (2 * dist / speed + 120 + WAIT_TIME) * 1000
+  end
+  if now > target_deadline then stop("Aborted: target timeout"); return end
   if dist < 0.2 then
     light(false)
     if not vehicle:set_target_velocity_NED(vector(0, 0, 0)) then
@@ -161,12 +166,11 @@ function update()
     if not waiting_until then waiting_until = now + WAIT_TIME * 1000 end
     if now >= waiting_until then
       current_point = current_point + 1
-      started = nil
+      target_deadline = nil
       waiting_until = nil
       if current_point > #points then stop("Light painting complete"); return end
     end
   else
-    local speed = target[3] and DRAW_SPEED or MOVE_SPEED
     -- Proportional slowdown near targets, capped by configured speed.
     local scale = math.min(speed, dist) / dist
     light(target[3])
