@@ -13,6 +13,8 @@ The first native Rollup attempt was blocked by Windows Application Control. The 
 
 A broad redacted file scan covered 19,689 files / 1,172,903,167 bytes, including ignored/untracked dependencies and release binaries. Pattern hits were reviewed: dotenv truncated documentation examples, webcrypto PEM parser delimiters, `sk-` substrings inside CSS/Chromium identifiers, and `AKIA` substrings embedded in upstream binary/base64 data. No project credential or sensitive configuration file was found. Dependencies, release binaries and audit reports are excluded from git. Authored source/docs were also checked for local user paths/contact data; the license uses the public GitHub handle. No private user data is used by this application.
 
-Fresh-clone verification and final history review are recorded below when completed.
+Fresh local clone verification: `git clone --no-hardlinks` into `work/verification/drone-clean`, then `npm ci`, `npm run test:run`, and `npm run test:desktop` all succeeded. The clone had no node_modules or build output before installation. All 38 tests, both builds, and seven desktop checks passed. Electron downloaded its runtime on first launch. No source files were copied from the installed working tree.
+
+The initial commit's complete reachable history contained 36 blobs; all were scanned for key patterns, private-key markers, local user paths and sensitive filenames, with no findings. A final pre-push scan covers subsequent documentation changes too. The broad file-scan false positives were classified without recording credential values. No original project Git history existed in this source folder.
 
 ArduPilot SITL, flight dynamics, hardware relay behavior, aircraft flight, macOS/Linux runtime, and remote CI execution are **UNVERIFIED**. No flight success, deployment or measured performance claim is made.
