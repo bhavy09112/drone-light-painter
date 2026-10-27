@@ -1,0 +1,21 @@
+name: Verify desktop editor
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:run
+      - run: npm run test:desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: editor-screenshot
+          path: docs/editor.png

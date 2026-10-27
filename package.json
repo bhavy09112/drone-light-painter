@@ -1,0 +1,61 @@
+{
+  "name": "drone-light-painter",
+  "version": "1.0.0",
+  "description": "Cross-platform desktop app for designing drone light-painting patterns and exporting ArduPilot Lua scripts",
+  "author": "Drone Light Painter",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "build:main": "tsc -p tsconfig.main.json",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && npm run build:main && electron . --dev\"",
+    "electron:build": "npm run build && npm run build:main && electron-builder",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "start": "npm run build && npm run build:main && electron .",
+    "test:run": "vitest run",
+    "test:desktop": "npm run build && npm run build:main && electron tests/electron-smoke.cjs"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "zustand": "4.5.7"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "5.2.0",
+    "@vitest/ui": "4.1.12",
+    "concurrently": "8.2.2",
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0",
+    "fengari": "0.1.5",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "4.1.12",
+    "wait-on": "7.2.0",
+    "rollup": "npm:@rollup/wasm-node@4.65.1"
+  },
+  "build": {
+    "appId": "com.dronelightpainter.app",
+    "productName": "Drone Light Painter",
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
+    "directories": {
+      "output": "release/verified"
+    },
+    "win": {
+      "target": "dir"
+    }
+  },
+  "engines": {
+    "node": ">=22.12 <26"
+  },
+  "license": "MIT",
+  "overrides": {
+    "rollup": "$rollup"
+  }
+}

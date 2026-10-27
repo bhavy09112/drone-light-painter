@@ -1,0 +1,62 @@
+const { app, BrowserWindow } = require('electron');
+const path = require('node:path');
+const fs = require('node:fs/promises');
+app.disableHardwareAcceleration();
+const errors = [];
+let finished = false;
+const deadline = setTimeout(() => { console.error('Desktop smoke timed out'); app.exit(1); }, 30000);
+app.on('browser-window-created', (_event, window) => {
+  window.webContents.on('preload-error', (_event, _file, error) => errors.push(String(error)));
+  window.webContents.on('did-fail-load', (_event, code, message) => errors.push(`${code}: ${message}`));
+  window.webContents.on('console-message', event => { if (event.level === 'error') errors.push(event.message); });
+  window.webContents.once('did-finish-load', async () => {
+    try {
+      const result = await window.webContents.executeJavaScript(`(async () => {
+        const tick = () => new Promise(resolve => setTimeout(resolve, 100));
+        await tick();
+        const assert = (value, message) => { if (!value) throw new Error(message); };
+        assert(document.querySelector('h1')?.textContent === 'Drone Light Painter', 'Header missing');
+        assert(document.querySelectorAll('svg line').length === 1, 'Demo line missing');
+        const button = title => document.querySelector('button[title="' + title + '"]');
+        button('Line').click(); await tick();
+        const svg = document.querySelector('svg');
+        const rect = svg.getBoundingClientRect();
+        const mouse = (type, x, y) => svg.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX: rect.left + x, clientY: rect.top + y }));
+        mouse('mousedown', 50, 50); await tick();
+        mouse('mousemove', 80, 80); await tick();
+        mouse('mouseup', 80, 80); await tick();
+        assert(svg.querySelectorAll('line').length === 2, 'Line drawing failed');
+        button('Undo').click(); await tick();
+        assert(svg.querySelectorAll('line').length === 1, 'Undo failed');
+        button('Redo').click(); await tick();
+        assert(svg.querySelectorAll('line').length === 2, 'Redo failed');
+        svg.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -100, clientX: rect.left + 100, clientY: rect.top + 100 }));
+        await tick();
+        assert(document.body.textContent.includes('Zoom: 111%'), 'Wheel zoom failed');
+        [...document.querySelectorAll('button')].find(b => b.textContent.includes('Run Safety Analysis')).click(); await tick();
+        assert(document.body.textContent.includes('Status: WARNING'), 'Demo segment gaps should produce warnings');
+        const checkbox = [...document.querySelectorAll('input[type="checkbox"]')].find(i => i.id !== 'dryRun');
+        checkbox.click(); await tick();
+        const exportButton = [...document.querySelectorAll('button')].find(b => b.textContent.includes('Export Lua Script'));
+        assert(!exportButton.disabled, 'Valid analyzed scene cannot export');
+        button('Undo').click(); await tick();
+        assert(exportButton.disabled && !document.body.textContent.includes('Status:'), 'Stale export analysis was not invalidated');
+        button('Redo').click(); await tick();
+        button('Select').click(); await tick();
+        return { title: document.title, shapes: svg.querySelectorAll('line, circle').length, checks: ['render', 'draw', 'undo', 'redo', 'zoom', 'safety report', 'export invalidation'] };
+      })()`);
+      if (errors.length) throw new Error(errors.join('\n'));
+      console.log(JSON.stringify({ desktopInteractions: 'PASS', ...result }));
+      window.show();
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const screenshot = await window.webContents.capturePage();
+      await fs.writeFile(path.join(__dirname, '../docs/editor.png'), screenshot.toPNG());
+      console.log(JSON.stringify({ desktopSmoke: 'PASS', ...result }));
+      finished = true;
+      clearTimeout(deadline);
+      app.exit(0);
+    } catch (error) { console.error(error); clearTimeout(deadline); app.exit(1); }
+  });
+});
+require('../dist-electron/main.js');
+app.on('window-all-closed', () => { if (!finished) app.exit(1); });
